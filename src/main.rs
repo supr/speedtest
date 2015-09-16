@@ -13,6 +13,10 @@ use getopts::Options;
 extern crate log;
 extern crate env_logger;
 
+extern crate xml;
+use xml::reader::EventReader;
+use xml::reader::events::*;
+
 const SPEEDTEST_CONFIG:&'static str = "https://www.speedtest.net/speedtest-config.php";
 
 struct Config {
@@ -38,6 +42,12 @@ fn print_usage(program: &str, opts: Options) {
     println!("{}", opts.usage(&brief));
 }
 
+fn indent(size: usize) -> String {
+        const INDENT: &'static str = "    ";
+            (0..size).map(|_| INDENT)
+                             .fold(String::with_capacity(size*INDENT.len()), |r, s| r + s)
+}
+
 fn get_config() -> Config {
     let resp = http::handle()
         .get(SPEEDTEST_CONFIG)
@@ -49,6 +59,26 @@ fn get_config() -> Config {
         Err(e) => { error!("{}", e.to_string()); process::exit(1); }
     };
     debug!("body={:?}", body);
+
+    let mut parser = EventReader::from_str(body);
+    let mut depth = 0;
+    for e in parser.events() {
+        match e {
+            XmlEvent::StartElement { ref name, .. } => {
+                println!("{}+{}", indent(depth), name);
+                depth += 1;
+            },
+            XmlEvent::EndElement { name } => {
+                depth -= 1;
+                println!("{}-{}", indent(depth), name);
+            },
+            XmlEvent::Error(e) => {
+                println!("Error: {}", e);
+                break;
+            },
+            _ => {}
+        }
+    }
 
     Config::new()
 }

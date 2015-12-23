@@ -1,8 +1,7 @@
 use std::env;
 use std::process;
 use std::str;
-use std::io::Read;
-use std::collections::HashMap;
+use std::io::{Error, ErrorKind, Read};
 
 extern crate hyper;
 use hyper::client::Client;
@@ -17,25 +16,45 @@ extern crate log;
 extern crate env_logger;
 
 extern crate xml;
-use xml::reader::EventReader;
+use xml::attribute::OwnedAttribute;
+use xml::reader::{EventReader, XmlEvent};
+
+type IoError = std::io::Error;
+type HyperError = hyper::error::Error;
+type ParseError = xml::reader::Error;
 
 const SPEEDTEST_CONFIG:&'static str = "https://www.speedtest.net/speedtest-config.php";
 
+#[derive(Debug)]
 struct Config {
-    client: HashMap<String, String>,
-    times: HashMap<String, String>,
-    download: HashMap<String, String>,
-    upload: HashMap<String, String>
+    client: Vec<OwnedAttribute>,
+    times: Vec<OwnedAttribute>,
+    download: Vec<OwnedAttribute>,
+    upload: Vec<OwnedAttribute>
 }
 
-impl Config {
-    fn new() -> Self {
-        Config{
-            client: HashMap::new(),
-            times: HashMap::new(),
-            download: HashMap::new(),
-            upload: HashMap::new()
-        }
+#[derive(Debug)]
+enum SpeedtestError {
+    Other(IoError),
+    Http(HyperError),
+    Xml(ParseError),
+}
+
+impl From<ParseError> for SpeedtestError {
+    fn from(err: ParseError) -> SpeedtestError {
+        SpeedtestError::Xml(err)
+    }
+}
+
+impl From<HyperError> for SpeedtestError {
+    fn from(err: HyperError) -> SpeedtestError {
+        SpeedtestError::Http(err)
+    }
+}
+
+impl From<IoError> for SpeedtestError {
+    fn from(err: IoError) -> SpeedtestError {
+        SpeedtestError::Other(err)
     }
 }
 
@@ -44,20 +63,37 @@ fn print_usage(program: &str, opts: Options) {
     println!("{}", opts.usage(&brief));
 }
 
-fn indent(size: usize) -> String {
-    const INDENT: &'static str = "    ";
-    (0..size).map(|_| INDENT)
-        .fold(String::with_capacity(size*INDENT.len()), |r, s| r + s)
+fn find_xml_key<'r>(parser: &mut EventReader<&'r [u8]>, key: &str) -> Result<XmlEvent, SpeedtestError> {
+    loop {
+        let evnt = try!(parser.next());
+        match evnt {
+            XmlEvent::StartElement { ref name, .. } if name.local_name == key => { return Ok(evnt.clone()); },
+            _ => { continue; }
+        }
+    }
 }
 
-fn get_config() -> Config {
-    //Gather config data from speedtest
-    let resp = Client::new().request(Method::Get, SPEEDTEST_CONFIG).header(UserAgent("Mozilla/5.0".to_owned())).send().unwrap();
-    info!("code={}; headers={};", resp.status, resp.headers);
+fn find_xml_key_attrs<'r>(mut parser: EventReader<&'r [u8]>, key: &str) -> Result<Vec<OwnedAttribute>, SpeedtestError> {
+    match find_xml_key(&mut parser, key) {
+        Ok(XmlEvent::StartElement { name, attributes, .. }) => { return Ok(attributes); },
+        Ok(_) => { return Err(SpeedtestError::from(Error::new(ErrorKind::Other, "Unknown Error!"))); },
+        Err(e) => { return Err(e); }
+    }
+}
 
-    //Begin XML Parse
-    let parser = EventReader::new(resp);
-    Config::new()
+fn get_config() -> Result<Config, SpeedtestError> {
+    //Gather config data from speedtest
+    let mut resp = try!(Client::new().request(Method::Get, SPEEDTEST_CONFIG).header(UserAgent("Mozilla/5.0".to_owned())).send());
+    info!("code={}; headers={};", resp.status, resp.headers);
+    let mut body = String::new();
+    resp.read_to_string(&mut body);
+
+    Ok(Config {
+        client: try!(find_xml_key_attrs(EventReader::from_str(&*body), "client")),
+        times: try!(find_xml_key_attrs(EventReader::from_str(&*body), "times")),
+        download: try!(find_xml_key_attrs(EventReader::from_str(&*body), "download")),
+        upload: try!(find_xml_key_attrs(EventReader::from_str(&*body), "download"))
+    })
 }
 
 fn main() {
@@ -88,5 +124,6 @@ fn main() {
     info!("Timeout is {}", timeout);
     info!("Server ID is {}", server_id);
 
-    get_config();
+    let c = get_config();
+    println!("Config: {:?}", c);
 }

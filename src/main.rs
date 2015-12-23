@@ -51,10 +51,11 @@ fn indent(size: usize) -> String {
 }
 
 fn get_config() -> Config {
+    //Gather config data from speedtest
     let resp = Client::new().request(Method::Get, SPEEDTEST_CONFIG).header(UserAgent("Mozilla/5.0".to_owned())).send().unwrap();
-    //let mut body = String::new();
-    //resp.read_to_string(&mut body).unwrap();
     info!("code={}; headers={};", resp.status, resp.headers);
+
+    //Begin XML Parse
     let parser = EventReader::new(resp);
     Config::new()
 }

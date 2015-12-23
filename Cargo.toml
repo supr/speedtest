@@ -5,7 +5,7 @@ authors = ["Prudhvi Krishna Surapaneni <me@prudhvi.net>"]
 
 [dependencies]
 getopts = "0.2"
-curl = "0.2.11"
-log = "0.3.2"
-env_logger = "0.3.1"
-xml-rs = "0.1.26"
+log = "0.3"
+hyper = "0.7"
+env_logger = "0.3"
+xml-rs = "0.2"

@@ -1,10 +1,13 @@
 use std::env;
 use std::process;
 use std::str;
+use std::io::Read;
 use std::collections::HashMap;
 
-extern crate curl;
-use curl::http;
+extern crate hyper;
+use hyper::client::Client;
+use hyper::header::UserAgent;
+use hyper::method::Method;
 
 extern crate getopts;
 use getopts::Options;
@@ -15,7 +18,6 @@ extern crate env_logger;
 
 extern crate xml;
 use xml::reader::EventReader;
-use xml::reader::events::*;
 
 const SPEEDTEST_CONFIG:&'static str = "https://www.speedtest.net/speedtest-config.php";
 
@@ -43,43 +45,17 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn indent(size: usize) -> String {
-        const INDENT: &'static str = "    ";
-            (0..size).map(|_| INDENT)
-                             .fold(String::with_capacity(size*INDENT.len()), |r, s| r + s)
+    const INDENT: &'static str = "    ";
+    (0..size).map(|_| INDENT)
+        .fold(String::with_capacity(size*INDENT.len()), |r, s| r + s)
 }
 
 fn get_config() -> Config {
-    let resp = http::handle()
-        .get(SPEEDTEST_CONFIG)
-        .header("User-Agent", "Mozilla/5.0")
-        .exec().unwrap();
-    info!("code={}; headers={:?}", resp.get_code(), resp.get_headers());
-    let body = match str::from_utf8(resp.get_body()) {
-        Ok(b) => b,
-        Err(e) => { error!("{}", e.to_string()); process::exit(1); }
-    };
-    debug!("body={:?}", body);
-
-    let mut parser = EventReader::from_str(body);
-    let mut depth = 0;
-    for e in parser.events() {
-        match e {
-            XmlEvent::StartElement { ref name, .. } => {
-                println!("{}+{}", indent(depth), name);
-                depth += 1;
-            },
-            XmlEvent::EndElement { name } => {
-                depth -= 1;
-                println!("{}-{}", indent(depth), name);
-            },
-            XmlEvent::Error(e) => {
-                println!("Error: {}", e);
-                break;
-            },
-            _ => {}
-        }
-    }
-
+    let resp = Client::new().request(Method::Get, SPEEDTEST_CONFIG).header(UserAgent("Mozilla/5.0".to_owned())).send().unwrap();
+    //let mut body = String::new();
+    //resp.read_to_string(&mut body).unwrap();
+    info!("code={}; headers={};", resp.status, resp.headers);
+    let parser = EventReader::new(resp);
     Config::new()
 }
 

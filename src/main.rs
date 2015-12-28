@@ -1,7 +1,7 @@
 use std::env;
 use std::process;
 use std::str;
-use std::io::{Error, ErrorKind, Read};
+use std::io::{Cursor, Error, ErrorKind, Read};
 
 extern crate hyper;
 use hyper::client::Client;
@@ -92,7 +92,7 @@ fn get_config() -> Result<Config, SpeedtestError> {
         client: try!(find_xml_key_attrs(EventReader::from_str(&*body), "client")),
         times: try!(find_xml_key_attrs(EventReader::from_str(&*body), "times")),
         download: try!(find_xml_key_attrs(EventReader::from_str(&*body), "download")),
-        upload: try!(find_xml_key_attrs(EventReader::from_str(&*body), "download"))
+        upload: try!(find_xml_key_attrs(EventReader::from_str(&*body), "upload"))
     })
 }
 
@@ -125,5 +125,5 @@ fn main() {
     info!("Server ID is {}", server_id);
 
     let c = get_config();
-    println!("Config: {:?}", c);
+    info!("Config is {:?}", c);
 }

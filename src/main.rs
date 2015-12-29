@@ -21,7 +21,7 @@ use xml::reader::{EventReader, XmlEvent};
 
 type IoError = std::io::Error;
 type HyperError = hyper::error::Error;
-type ParseError = xml::reader::Error;
+type XmlError = xml::reader::Error;
 
 const SPEEDTEST_CONFIG:&'static str = "https://www.speedtest.net/speedtest-config.php";
 
@@ -37,12 +37,12 @@ struct Config {
 enum SpeedtestError {
     Other(IoError),
     Http(HyperError),
-    Xml(ParseError),
+    XmlParse(XmlError),
 }
 
-impl From<ParseError> for SpeedtestError {
-    fn from(err: ParseError) -> SpeedtestError {
-        SpeedtestError::Xml(err)
+impl From<XmlError> for SpeedtestError {
+    fn from(err: XmlError) -> SpeedtestError {
+        SpeedtestError::XmlParse(err)
     }
 }
 
@@ -63,22 +63,36 @@ fn print_usage(program: &str, opts: Options) {
     println!("{}", opts.usage(&brief));
 }
 
-fn find_xml_key<'r>(parser: &mut EventReader<&'r [u8]>, key: &str) -> Result<XmlEvent, SpeedtestError> {
-    loop {
-        let evnt = try!(parser.next());
-        match evnt {
-            XmlEvent::StartElement { ref name, .. } if name.local_name == key => { return Ok(evnt.clone()); },
-            _ => { continue; }
-        }
-    }
+struct XmlParser {
+    body: String
 }
 
-fn find_xml_key_attrs<'r>(mut parser: EventReader<&'r [u8]>, key: &str) -> Result<Vec<OwnedAttribute>, SpeedtestError> {
-    match find_xml_key(&mut parser, key) {
-        Ok(XmlEvent::StartElement { ref name, attributes, .. }) => { return Ok(attributes); },
-        Ok(_) => { return Err(SpeedtestError::from(Error::new(ErrorKind::Other, "Unknown Error!"))); },
-        Err(e) => { return Err(e); }
+impl XmlParser {
+    fn new(data: String) -> XmlParser {
+        XmlParser {
+            body: data
+        }
     }
+
+    fn find_key(&self, key: &str) -> Result<XmlEvent, SpeedtestError> {
+        let mut parser = EventReader::from_str(&*self.body);
+        loop {
+            let evnt = try!(parser.next());
+            match evnt {
+                XmlEvent::StartElement { ref name, .. } if name.local_name == key => { return Ok(evnt.clone()); },
+                _ => { continue; }
+            }
+        }
+    }
+
+    fn find_key_attrs(&self, key: &str) -> Result<Vec<OwnedAttribute>, SpeedtestError> {
+        match self.find_key(key) {
+            Ok(XmlEvent::StartElement { name, attributes, .. }) => { return Ok(attributes); },
+            Ok(_) => { return Err(SpeedtestError::from(Error::new(ErrorKind::Other, "Unknown Error!"))); },
+            Err(e) => { return Err(e); }
+        }
+    }
+
 }
 
 fn get_config() -> Result<Config, SpeedtestError> {
@@ -88,11 +102,13 @@ fn get_config() -> Result<Config, SpeedtestError> {
     let mut body = String::new();
     resp.read_to_string(&mut body);
 
+    let parser = XmlParser::new(body);
+
     Ok(Config {
-        client: try!(find_xml_key_attrs(EventReader::from_str(&*body), "client")),
-        times: try!(find_xml_key_attrs(EventReader::from_str(&*body), "times")),
-        download: try!(find_xml_key_attrs(EventReader::from_str(&*body), "download")),
-        upload: try!(find_xml_key_attrs(EventReader::from_str(&*body), "upload"))
+        client: try!(parser.find_key_attrs("client")),
+        times: try!(parser.find_key_attrs("times")),
+        download: try!(parser.find_key_attrs("download")),
+        upload: try!(parser.find_key_attrs("upload"))
     })
 }
 

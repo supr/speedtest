@@ -75,7 +75,7 @@ fn find_xml_key<'r>(parser: &mut EventReader<&'r [u8]>, key: &str) -> Result<Xml
 
 fn find_xml_key_attrs<'r>(mut parser: EventReader<&'r [u8]>, key: &str) -> Result<Vec<OwnedAttribute>, SpeedtestError> {
     match find_xml_key(&mut parser, key) {
-        Ok(XmlEvent::StartElement { name, attributes, .. }) => { return Ok(attributes); },
+        Ok(XmlEvent::StartElement { ref name, attributes, .. }) => { return Ok(attributes); },
         Ok(_) => { return Err(SpeedtestError::from(Error::new(ErrorKind::Other, "Unknown Error!"))); },
         Err(e) => { return Err(e); }
     }
@@ -83,7 +83,7 @@ fn find_xml_key_attrs<'r>(mut parser: EventReader<&'r [u8]>, key: &str) -> Resul
 
 fn get_config() -> Result<Config, SpeedtestError> {
     //Gather config data from speedtest
-    let mut resp = try!(Client::new().request(Method::Get, SPEEDTEST_CONFIG).header(UserAgent("Mozilla/5.0".to_owned())).send());
+    let mut resp = try!(Client::new().request(Method::Get, SPEEDTEST_CONFIG).header(UserAgent("speedtest/0.0.1".to_owned())).send());
     info!("code={}; headers={};", resp.status, resp.headers);
     let mut body = String::new();
     resp.read_to_string(&mut body);
